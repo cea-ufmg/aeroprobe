@@ -4,6 +4,9 @@
  */
 
 
+#include <Wire.h>
+
+#include "BMP180.h"
 #include "mavlink_bridge.h"
 #include "mavlink/ceaufmg/mavlink.h"
 
@@ -53,12 +56,15 @@ public:
   }
 };
 
-
 HX711 hx711(4, 3);
+BMP180 bmp180;
 
 void setup() {
   Serial.begin(57600);
-  hx711.begin();  
+  Wire.begin();
+  
+  hx711.begin();
+  bmp180.begin(BMP180_ULTRALOWPOWER);
 }
 
 
@@ -68,7 +74,7 @@ void loop() {
   static uint32_t last_qbar_meas = 0;
   
   uint32_t now = millis();
-
+  
   if (now - last_qbar_meas > QBAR_PERIOD_MS) {
     uint32_t qbar_raw = hx711.read();
 
