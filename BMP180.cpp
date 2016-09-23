@@ -205,6 +205,15 @@ uint8_t BMP180::read8(uint8_t a) {
   
   Wire.beginTransmission(BMP180_I2CADDR); // start transmission to device 
   Wire.requestFrom(BMP180_I2CADDR, 1);// send data n-bytes read
+
+  if (Wire.available() != 1) {
+#if BMP180_DEBUG == 1
+    Serial.print("Error!!! Wire.available()=");
+    Serial.println(Wire.available());
+#endif
+    return 0;
+  }
+
   ret = Wire.read(); // receive DATA
   Wire.endTransmission(); // end transmission
 
@@ -220,6 +229,13 @@ uint16_t BMP180::read16(uint8_t a) {
   
   Wire.beginTransmission(BMP180_I2CADDR); // start transmission to device 
   Wire.requestFrom(BMP180_I2CADDR, 2);// send data n-bytes read
+
+  if (Wire.available() != 2) {
+    Serial.print("Error!!! Wire.available()=");
+    Serial.println(Wire.available());
+    return 0;
+  }
+  
   ret = Wire.read(); // receive DATA
   ret <<= 8;
   ret |= Wire.read(); // receive DATA

@@ -13,6 +13,11 @@
 
 #define ALPHA_PERIOD_MS 5
 #define QBAR_PERIOD_MS 100
+#define PRESS_PERIOD_MS 10
+#define TEMP_PERIOD_MS 500
+
+#define PRESS_CONV_MS 5
+#define TEMP_CONV_MS 5
 
 
 class HX711 {
@@ -72,25 +77,56 @@ void setup() {
 void loop() {
   static uint32_t last_alpha_meas = 0;
   static uint32_t last_qbar_meas = 0;
+  static uint32_t last_press_meas = 0;
+  static uint32_t last_temp_meas = 0;
+  static bool converting_temp = false;
+  static bool converting_press = false;
   
   uint32_t now = millis();
-  
-  if (now - last_qbar_meas > QBAR_PERIOD_MS) {
-    uint32_t qbar_raw = hx711.read();
 
+  // Temperature measurement
+  if (!converting_temp && (now - last_temp_meas) > TEMP_PERIOD_MS) {
+    bmp180.triggerTemperatureMeasurement();
+    converting_temp = true;
+    last_temp_meas = now;
+  } else if (converting_temp && (now - last_temp_meas) > TEMP_CONV_MS) {
+    converting_temp = false;
+    int32_t temp = bmp180.readTemperature();
     mavlink_msg_data_int_send(MAVLINK_COMM_0, 0, 
-                              CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar_raw);
+                              CEAFDAS_DATA_SOUCE_TEMPERATURE_RAW, temp);
+  }
+  
+  // Pressure measurement
+  if (!converting_temp && !converting_press &&
+      (now - last_press_meas) > PRESS_PERIOD_MS) {
+    bmp180.triggerPressureMeasurement();
+    converting_press = true;
+    last_press_meas = now;
+  } else if (converting_press && (now - last_press_meas) > PRESS_CONV_MS) {
+    converting_press = false;
+    int32_t press = bmp180.readPressure();
+    mavlink_msg_data_int_send(MAVLINK_COMM_0, 0, 
+                              CEAFDAS_DATA_SOUCE_PRESSURE_RAW, press);
+  }
+
+  // Dynamic pressure measurement
+  if (now - last_qbar_meas > QBAR_PERIOD_MS) {
+    uint32_t qbar = hx711.read();
+
+    mavlink_msg_data_int_send(MAVLINK_COMM_0, 0,
+                              CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar);
     last_qbar_meas = now;
   }
   
+  // Aerodynamic angles measurement
   if (now - last_alpha_meas > ALPHA_PERIOD_MS) {
-    uint16_t alpha_raw = analogRead(A1);
-    uint16_t beta_raw = analogRead(A0);
+    uint16_t alpha = analogRead(A1);
+    uint16_t beta = analogRead(A0);
 
     mavlink_msg_data_int_send(MAVLINK_COMM_0, 0, 
-                              CEAFDAS_DATA_SOUCE_ALPHA_RAW, alpha_raw);
+                              CEAFDAS_DATA_SOUCE_ALPHA_RAW, alpha);
     mavlink_msg_data_int_send(MAVLINK_COMM_0, 0, 
-                              CEAFDAS_DATA_SOUCE_BETA_RAW, beta_raw);
+                              CEAFDAS_DATA_SOUCE_BETA_RAW, beta);
     last_alpha_meas = now;
   }
 }
