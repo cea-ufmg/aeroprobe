@@ -23,13 +23,13 @@
 class HX711 {
   uint8_t dataPin;
   uint8_t clockPin;
-  uint8_t gain_ch_pulses=2;
+  uint8_t gain_ch_pulses;
   
 public:
   HX711(uint8_t dataPin, uint8_t clockPin):
-    dataPin(dataPin), clockPin(clockPin) {
+    dataPin(dataPin), clockPin(clockPin), gain_ch_pulses(2) {
   }
-
+  
   void begin() {
     pinMode(clockPin, OUTPUT);
     pinMode(dataPin, INPUT);
@@ -65,15 +65,25 @@ HX711 hx711(4, 3);
 BMP180 bmp180;
 
 
+/**
+ * Microseconds since boot as an uint64_t.
+ * Internally uses only 40 bits, so overflows roughly every 12 days.
+ * To work, this function must be called at least once every 35 minutes.
+ */
 uint64_t micros64() {
   static uint8_t overflow_count = 0;
-  static uint32_t last_micros = 0;
-    
-  uint32_t now = micros();
-  if ((last_micros & 0x80000000L) && !(now & 0x80000000L))
-    overflow_count++;
+  static uint8_t last_micros_msb = false;
 
-  last_micros = now;
+  // Get current time
+  uint32_t now = micros();
+
+  // Check for overflow
+  uint8_t micros_msb = now >> 31;
+  if (last_micros_msb && !micros_msb)
+    overflow_count++;
+  last_micros_msb = micros_msb;
+
+  // Pack and return
   return ((uint64_t)overflow_count << 32) | now;
 }
 
