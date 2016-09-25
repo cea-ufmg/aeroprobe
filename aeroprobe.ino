@@ -11,7 +11,7 @@
 #include "mavlink/ceaufmg/mavlink.h"
 
 
-#define ALPHA_PERIOD_US 30000
+#define ANGLES_PERIOD_US 30000
 #define QBAR_PERIOD_US 100000L
 #define PRESS_PERIOD_US 100000L
 #define TEMP_PERIOD_US 1000000L
@@ -64,6 +64,20 @@ public:
 HX711 hx711(4, 3);
 BMP180 bmp180;
 
+
+uint64_t micros64() {
+  static uint8_t overflow_count = 0;
+  static uint32_t last_micros = 0;
+    
+  uint32_t now = micros();
+  if ((last_micros & 0x80000000L) && !(now & 0x80000000L))
+    overflow_count++;
+
+  last_micros = now;
+  return ((uint64_t)overflow_count << 32) | now;
+}
+
+
 void setup() {
   Serial.begin(57600);
   Wire.begin();
@@ -75,35 +89,25 @@ void setup() {
 
 
 void loop() {
-  static uint64_t last_alpha_meas = 0;
+  static uint64_t last_angles_meas = 0;
   static uint64_t last_qbar_meas = 0;
   static uint64_t last_press_meas = 0;
   static uint64_t last_temp_meas = 0;
   static bool converting_temp = false;
   static bool converting_press = false;
-  static uint8_t micros_overflow_count = 0;
-  static uint32_t last_clock = 0;
-  
-  uint32_t clock = micros();
 
-  // Detect micros overflow
-  if ((last_clock & 0x80000000L) && !(clock & 0x80000000L))
-      micros_overflow_count++;
-  last_clock = clock;
-  uint64_t now = ((uint64_t)micros_overflow_count << 32) | clock;
+  uint64_t now = micros64();
 
   // Temperature measurement
   if (!converting_temp && (now - last_temp_meas) > TEMP_PERIOD_US) {
     bmp180.triggerTemperatureMeasurement();
     converting_temp = true;
-    last_temp_meas = now;
-    return;
+    last_temp_meas = micros64();
   } else if (converting_temp && (now - last_temp_meas) > TEMP_CONV_US) {
     converting_temp = false;
     int32_t temp = bmp180.readTemperature();
     mavlink_msg_data_int_send(MAVLINK_COMM_0, last_temp_meas, 
                               CEAFDAS_DATA_SOUCE_TEMPERATURE_RAW, temp);
-    return;
   }
   
   // Pressure measurement
@@ -111,14 +115,12 @@ void loop() {
       (now - last_press_meas) > PRESS_PERIOD_US) {
     bmp180.triggerPressureMeasurement();
     converting_press = true;
-    last_press_meas = now;
-    return;
+    last_press_meas = micros64();
   } else if (converting_press && (now - last_press_meas) > PRESS_CONV_US) {
     converting_press = false;
     int32_t press = bmp180.readPressure();
     mavlink_msg_data_int_send(MAVLINK_COMM_0, last_press_meas,
                               CEAFDAS_DATA_SOUCE_PRESSURE_RAW, press);
-    return;
   }
 
   // Dynamic pressure measurement
@@ -127,20 +129,20 @@ void loop() {
 
     mavlink_msg_data_int_send(MAVLINK_COMM_0, last_qbar_meas,
                               CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar);
-    last_qbar_meas = now;
-    return;
+    last_qbar_meas = micros64();
   }
   
   // Aerodynamic angles measurement
-  if (now - last_alpha_meas > ALPHA_PERIOD_US) {
+  if (now - last_angles_meas > ANGLES_PERIOD_US) {
+    last_angles_meas = micros64();
     uint16_t alpha = analogRead(A1);
+
+    uint64_t beta_meas_time = micros64();
     uint16_t beta = analogRead(A0);
 
-    mavlink_msg_data_int_send(MAVLINK_COMM_0, now,
+    mavlink_msg_data_int_send(MAVLINK_COMM_0, last_angles_meas,
                               CEAFDAS_DATA_SOUCE_ALPHA_RAW, alpha);
-    mavlink_msg_data_int_send(MAVLINK_COMM_0, now,
+    mavlink_msg_data_int_send(MAVLINK_COMM_0, beta_meas_time,
                               CEAFDAS_DATA_SOUCE_BETA_RAW, beta);
-    last_alpha_meas = now;
-    return;
   }
 }
