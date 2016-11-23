@@ -27,7 +27,7 @@ class HX711 {
   
 public:
   HX711(uint8_t dataPin, uint8_t clockPin):
-    dataPin(dataPin), clockPin(clockPin), gain_ch_pulses(2) {
+    dataPin(dataPin), clockPin(clockPin), gain_ch_pulses(3) {
   }
   
   void begin() {
