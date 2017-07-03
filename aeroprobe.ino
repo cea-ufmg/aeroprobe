@@ -109,7 +109,8 @@ void loop() {
   uint64_t now = micros64();
 
   // Temperature measurement
-  if (!converting_temp && (now - last_temp_meas) > TEMP_PERIOD_US) {
+  if (!converting_temp && !converting_press
+      && (now - last_temp_meas) > TEMP_PERIOD_US) {
     bmp180.triggerTemperatureMeasurement();
     converting_temp = true;
     last_temp_meas = micros64();
@@ -121,8 +122,8 @@ void loop() {
   }
   
   // Pressure measurement
-  if (!converting_temp && !converting_press &&
-      (now - last_press_meas) > PRESS_PERIOD_US) {
+  if (!converting_temp && !converting_press
+      && (now - last_press_meas) > PRESS_PERIOD_US) {
     bmp180.triggerPressureMeasurement();
     converting_press = true;
     last_press_meas = micros64();

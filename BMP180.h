@@ -34,8 +34,8 @@
 #define BMP180_CONTROL           0xF4 
 #define BMP180_TEMPDATA          0xF6
 #define BMP180_PRESSUREDATA      0xF6
-#define BMP180_READTEMPCMD          0x2E
-#define BMP180_READPRESSURECMD            0x34
+#define BMP180_READTEMPCMD       0x2E
+#define BMP180_READPRESSURECMD   0x34
 
 
 class BMP180 {
