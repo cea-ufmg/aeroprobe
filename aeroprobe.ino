@@ -104,14 +104,6 @@ void loop() {
     ALPHA,
     BETA
   } last_angle_measured;
-
-
-  uint8_t seconds;
-  DS3231::read_all(&seconds, 0, 0,
-                   0, 0, 0, 0);
-  Serial.println(seconds);
-  delay(100);
-  return;
   
   uint64_t now = micros64();
 
