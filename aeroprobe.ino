@@ -6,64 +6,30 @@
 
 #include <Wire.h>
 
-#include "BMP180.h"
+#include "hx711.hpp"
+#include "ds3231.hpp"
+
 #include "mavlink_bridge.h"
 #include "mavlink/ceaufmg/mavlink.h"
 
 
-#define ANGLES_PERIOD_US 30000
-#define QBAR_PERIOD_US 100000L
-#define PRESS_PERIOD_US 100000L
-#define TEMP_PERIOD_US 1000000L
+constexpr uint32_t ANGLES_PERIOD_US = 25000;
+constexpr uint32_t QBAR_PERIOD_US = 12500;
+constexpr uint32_t PSTAT_PERIOD_US = 10000;
+constexpr uint32_t TEMP_PERIOD_US = 1000000;
 
-#define PRESS_CONV_US 4500
-#define TEMP_CONV_US 4500
+constexpr int LED_PIN = 2;
 
+constexpr int ANGLES_HX711_DATA = 10;
+constexpr int ANGLES_HX711_CLK = 9;
+HX711 angles_hx711(ANGLES_HX711_DATA, ANGLES_HX711_CLK);
 
-class HX711 {
-  uint8_t dataPin;
-  uint8_t clockPin;
-  uint8_t gain_ch_pulses;
-  
-public:
-  HX711(uint8_t dataPin, uint8_t clockPin):
-    dataPin(dataPin), clockPin(clockPin), gain_ch_pulses(3) {
-  }
-  
-  void begin() {
-    pinMode(clockPin, OUTPUT);
-    pinMode(dataPin, INPUT);
-  }
+constexpr int QBAR_HX711_DATA = 11;
+constexpr int QBAR_HX711_CLK = 12;
+HX711 qbar_hx711(QBAR_HX711_DATA, QBAR_HX711_CLK, HX711::CHANNEL_A_64);
 
-  bool is_ready() {
-    return digitalRead(dataPin) == LOW;
-  }
-  
-  uint32_t read() {
-    // Wait for chip to become ready
-    while (!is_ready());
-
-    // Read the data
-    uint32_t data = (uint32_t)shiftIn(dataPin, clockPin, MSBFIRST) << 16
-      | (uint32_t)shiftIn(dataPin, clockPin, MSBFIRST) << 8
-      | shiftIn(dataPin, clockPin, MSBFIRST);
-
-    // Configure the next measurement channel and gain
-    for (uint8_t i = 0; i < gain_ch_pulses; i++) {
-      digitalWrite(clockPin, HIGH);
-      digitalWrite(clockPin, LOW);
-    }
-
-    // Extend the signal bit into the 4th data byte
-    if (data & 0x800000ul)
-      data |= 0xFF000000ul;
-    return data;
-  }
-};
-
-HX711 hx711(4, 3);
-BMP180 bmp180;
-
+constexpr int PSTAT_PIN = A0;
+constexpr int BATT_MON_PIN = A1;
 
 /**
  * Microseconds since boot as an uint64_t.
@@ -88,72 +54,108 @@ uint64_t micros64() {
 }
 
 
-void setup() {
-  Serial.begin(57600);
-  Wire.begin();
-  
-  hx711.begin();
-  bmp180.begin(BMP180_ULTRALOWPOWER);
+inline void send_data(uint64_t time_usec, uint16_t data_source_id,
+                      int32_t value) {
+#ifndef TEXTUAL_PROTOCOL
+  mavlink_msg_data_int_send(MAVLINK_COMM_0, time_usec, data_source_id, value);
+#else
+  uint32_t sec = time_usec / 1000000;
+  uint32_t usec = time_usec % 1000000;
+  Serial.print("time=");
+  Serial.print(sec); //Arduino cannot print 64-bit numbers
+  Serial.print(usec);
+
+  Serial.print("\tdata_source=");
+  Serial.print(data_source_id);
+
+  Serial.print("\tvalue=");
+  Serial.println(value);
+#endif
 }
 
 
+inline void toggle_led() {
+  digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+}
+
+
+void setup() {
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
+  
+  Serial.begin(230400);
+  Wire.begin();
+  
+  qbar_hx711.begin();
+  qbar_hx711.read();
+
+  angles_hx711.begin();
+  angles_hx711.read(HX711::CHANNEL_A_64);
+
+  delay(100);
+}
+
 
 void loop() {
-  static uint64_t last_angles_meas = 0;
+  static uint64_t last_angle_meas = 0;
   static uint64_t last_qbar_meas = 0;
-  static uint64_t last_press_meas = 0;
-  static uint64_t last_temp_meas = 0;
-  static bool converting_temp = false;
-  static bool converting_press = false;
+  static uint64_t last_pstat_meas = 0;
+  enum {
+    ALPHA,
+    BETA
+  } last_angle_measured;
 
+
+  uint8_t seconds;
+  DS3231::read_all(&seconds, 0, 0,
+                   0, 0, 0, 0);
+  Serial.println(seconds);
+  delay(100);
+  return;
+  
   uint64_t now = micros64();
 
-  // Temperature measurement
-  if (!converting_temp && !converting_press
-      && (now - last_temp_meas) > TEMP_PERIOD_US) {
-    bmp180.triggerTemperatureMeasurement();
-    converting_temp = true;
-    last_temp_meas = micros64();
-  } else if (converting_temp && (now - last_temp_meas) > TEMP_CONV_US) {
-    converting_temp = false;
-    int32_t temp = bmp180.readTemperature();
-    mavlink_msg_data_int_send(MAVLINK_COMM_0, last_temp_meas, 
-                              CEAFDAS_DATA_SOUCE_TEMPERATURE_RAW, temp);
-  }
-  
-  // Pressure measurement
-  if (!converting_temp && !converting_press
-      && (now - last_press_meas) > PRESS_PERIOD_US) {
-    bmp180.triggerPressureMeasurement();
-    converting_press = true;
-    last_press_meas = micros64();
-  } else if (converting_press && (now - last_press_meas) > PRESS_CONV_US) {
-    converting_press = false;
-    int32_t press = bmp180.readPressure();
-    mavlink_msg_data_int_send(MAVLINK_COMM_0, last_press_meas,
-                              CEAFDAS_DATA_SOUCE_PRESSURE_RAW, press);
-  }
-
   // Dynamic pressure measurement
-  if (now - last_qbar_meas > QBAR_PERIOD_US) {
-    uint32_t qbar = hx711.read();
+  if (now - last_qbar_meas >= QBAR_PERIOD_US) {
+    int32_t qbar_value = qbar_hx711.read();
+    send_data(last_qbar_meas, CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar_value);
+    
+    last_qbar_meas = now;
+    toggle_led();
+    return;
+  }
 
-    mavlink_msg_data_int_send(MAVLINK_COMM_0, last_qbar_meas,
-                              CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar);
-    last_qbar_meas = micros64();
+  // Angle of attack pressure measurement
+  if (now - last_angle_meas >= ANGLES_PERIOD_US &&
+      last_angle_measured == ALPHA) {
+    int32_t angle_value = angles_hx711.read(HX711::CHANNEL_B_32);
+    send_data(last_angle_meas, CEAFDAS_DATA_SOUCE_ALPHA_RAW, angle_value);
+
+    last_angle_measured = BETA;
+    last_angle_meas = now;
+    toggle_led();
+    return;
+  }
+
+  // Sideslip pressure measurement
+  if (now - last_angle_meas >= ANGLES_PERIOD_US &&
+      last_angle_measured == BETA) {
+    int32_t angle_value = angles_hx711.read(HX711::CHANNEL_A_64);
+    send_data(last_angle_meas, CEAFDAS_DATA_SOUCE_BETA_RAW, angle_value);
+
+    last_angle_measured = ALPHA;
+    last_angle_meas = now;
+    toggle_led();
+    return;
   }
   
-  // Aerodynamic angles measurement
-  if (now - last_angles_meas > ANGLES_PERIOD_US) {
-    last_angles_meas = micros64();
-    uint16_t alpha = analogRead(A1);
-
-    uint64_t beta_meas_time = micros64();
-    uint16_t beta = analogRead(A0);
-
-    mavlink_msg_data_int_send(MAVLINK_COMM_0, last_angles_meas,
-                              CEAFDAS_DATA_SOUCE_ALPHA_RAW, alpha);
-    mavlink_msg_data_int_send(MAVLINK_COMM_0, beta_meas_time,
-                              CEAFDAS_DATA_SOUCE_BETA_RAW, beta);
+  // Static pressure measurement
+  if (now - last_pstat_meas >= PSTAT_PERIOD_US) {
+    uint16_t pstat_value = analogRead(PSTAT_PIN);
+    send_data(last_pstat_meas, CEAFDAS_DATA_SOUCE_PRESSURE_RAW, pstat_value);
+    
+    last_pstat_meas = now;    
+    toggle_led();
+    return;
   }
 }

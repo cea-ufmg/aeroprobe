@@ -2,6 +2,6 @@
 
 ARDMK_DIR ?= /usr/share/arduino
 
-BOARD_TAG = nano
-BOARD_SUB = atmega328
+BOARD_TAG = uno
+#BOARD_SUB = atmega328
 include ${ARDMK_DIR}/Arduino.mk
