@@ -101,51 +101,75 @@ void setup() {
   last_angle_channel = ALPHA;
 }
 
+void read_qbar() {
+  // Wait for DOUT to go to high
+  while (!digitalRead(QBAR_HX711_DATA));
+
+  // Wait for DOUT to go to low
+  while (digitalRead(QBAR_HX711_DATA));
+
+  // Get measurement time
+  uint64_t timestamp = micros64();
+
+  // Wait T1
+  delayMicroseconds(100);
+
+  // Get and send data
+  int32_t value = qbar_hx711.read();
+  send_data(timestamp, CEAFDAS_DATA_SOUCE_QBAR_RAW, value);
+}
+
+
+void read_alpha() {
+  // Wait for DOUT to go to high
+  while (!digitalRead(ANGLES_HX711_DATA));
+
+  // Wait for DOUT to go to low
+  while (digitalRead(ANGLES_HX711_DATA));
+
+  // Get measurement time
+  uint64_t timestamp = micros64();
+
+  // Wait T1
+  delayMicroseconds(100);
+
+  // Get and send data
+  int32_t value = angles_hx711.read(HX711::CHANNEL_B_32);
+  send_data(timestamp, CEAFDAS_DATA_SOUCE_ALPHA_RAW, value);
+}
+
+
+void read_beta() {
+  // Wait for DOUT to go to high
+  while (!digitalRead(ANGLES_HX711_DATA));
+
+  // Wait for DOUT to go to low
+  while (digitalRead(ANGLES_HX711_DATA));
+
+  // Get measurement time
+  uint64_t timestamp = micros64();
+
+  // Wait T1
+  delayMicroseconds(100);
+
+  // Get and send data
+  int32_t value = angles_hx711.read(HX711::CHANNEL_A_64);
+  send_data(timestamp, CEAFDAS_DATA_SOUCE_BETA_RAW, value);
+}
+
+
+void read_pstat() {
+  uint64_t timestamp = micros64();
+  uint16_t value = analogRead(PSTAT_PIN);
+  send_data(timestamp, CEAFDAS_DATA_SOUCE_PRESSURE_RAW, value);
+}
+
 
 void loop() {
-  uint64_t now;
+  read_qbar();
+  read_alpha();
+  read_beta();
+  read_pstat();
 
-  // Dynamic pressure measurement
-  now = micros64();
-  if (now - last_qbar_meas >= QBAR_PERIOD_US) {
-    int32_t qbar_value = qbar_hx711.read();
-    send_data(now, CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar_value);
-    
-    last_qbar_meas = now;
-    toggle_led();
-  }
-
-  // Angle of attack pressure measurement
-  now = micros64();
-  if (now - last_angle_meas >= ANGLES_PERIOD_US &&
-      last_angle_channel == ALPHA) {
-    int32_t angle_value = angles_hx711.read(HX711::CHANNEL_B_32);
-    send_data(now, CEAFDAS_DATA_SOUCE_ALPHA_RAW, angle_value);
-    
-    last_angle_channel = BETA;
-    last_angle_meas = now;
-    toggle_led();
-  }
-
-  // Sideslip pressure measurement
-  now = micros64();
-  if (now - last_angle_meas >= ANGLES_PERIOD_US &&
-      last_angle_channel == BETA) {
-    int32_t angle_value = angles_hx711.read(HX711::CHANNEL_A_64);
-    send_data(now, CEAFDAS_DATA_SOUCE_BETA_RAW, angle_value);
-    
-    last_angle_channel = ALPHA;
-    last_angle_meas = now;
-    toggle_led();
-  }
-  
-  // Static pressure measurement
-  now = micros64();
-  if (now - last_pstat_meas >= PSTAT_PERIOD_US) {
-    uint16_t pstat_value = analogRead(PSTAT_PIN);
-    send_data(now, CEAFDAS_DATA_SOUCE_PRESSURE_RAW, pstat_value);
-    
-    last_pstat_meas = now;
-    toggle_led();
-  }
+  toggle_led();
 }
