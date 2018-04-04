@@ -36,7 +36,7 @@ class HX711 {
     
     // Wait for chip to become ready
     while (!is_ready());
-
+    
     // Read the data
     int32_t data = (int32_t)shiftIn(dataPin, clockPin, MSBFIRST) << 16
       | (int32_t)shiftIn(dataPin, clockPin, MSBFIRST) << 8
@@ -47,7 +47,7 @@ class HX711 {
       digitalWrite(clockPin, HIGH);
       digitalWrite(clockPin, LOW);
     }
-
+    
     // Extend the signal bit into the 4th data byte
     if (data & 0x800000ul)
       data |= 0xFF000000ul;

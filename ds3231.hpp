@@ -5,14 +5,15 @@
 #include <stdint.h>
 #include <Wire.h>
 
-
 class DS3231 {
  public:
-  static constexpr uint8_t address = 0x68;
+  static constexpr int address = 0x68;
+
+  static uint32_t unix_time();
   
-  static bool read_all(uint8_t *sec, uint8_t *min, uint8_t *hour,
-                       uint8_t *weekday, uint8_t *day, uint8_t *month,
-                       uint8_t *year) {
+  static inline bool read_all(uint8_t *sec, uint8_t *min, uint8_t *hour,
+                              uint8_t *weekday, uint8_t *day, uint8_t *month,
+                              uint8_t *year) {
     Wire.beginTransmission(address);
     Wire.write(0);
     Wire.endTransmission();

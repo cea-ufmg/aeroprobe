@@ -13,10 +13,9 @@
 #include "mavlink/ceaufmg/mavlink.h"
 
 
-constexpr uint32_t ANGLES_PERIOD_US = 25000;
+constexpr uint32_t ANGLES_PERIOD_US = 120000;
 constexpr uint32_t QBAR_PERIOD_US = 12500;
-constexpr uint32_t PSTAT_PERIOD_US = 10000;
-constexpr uint32_t TEMP_PERIOD_US = 1000000;
+constexpr uint32_t PSTAT_PERIOD_US = 25000;
 
 constexpr int LED_PIN = 2;
 
@@ -30,6 +29,15 @@ HX711 qbar_hx711(QBAR_HX711_DATA, QBAR_HX711_CLK, HX711::CHANNEL_A_64);
 
 constexpr int PSTAT_PIN = A0;
 constexpr int BATT_MON_PIN = A1;
+
+static uint64_t last_angle_meas;
+static uint64_t last_qbar_meas;
+static uint64_t last_pstat_meas = 0;
+static enum {
+  ALPHA,
+  BETA
+} last_angle_channel;
+
 
 /**
  * Microseconds since boot as an uint64_t.
@@ -56,19 +64,15 @@ uint64_t micros64() {
 
 inline void send_data(uint64_t time_usec, uint16_t data_source_id,
                       int32_t value) {
-#ifndef TEXTUAL_PROTOCOL
+#ifndef TEXTUAL_DEBUG_PROTOCOL
   mavlink_msg_data_int_send(MAVLINK_COMM_0, time_usec, data_source_id, value);
 #else
-  uint32_t sec = time_usec / 1000000;
-  uint32_t usec = time_usec % 1000000;
-  Serial.print("time=");
-  Serial.print(sec); //Arduino cannot print 64-bit numbers
-  Serial.print(usec);
+  Serial.print((uint32_t) time_usec);
+  Serial.print("\t");
 
-  Serial.print("\tdata_source=");
   Serial.print(data_source_id);
+  Serial.print("\t");
 
-  Serial.print("\tvalue=");
   Serial.println(value);
 #endif
 }
@@ -85,69 +89,63 @@ void setup() {
   
   Serial.begin(230400);
   Wire.begin();
+
   
   qbar_hx711.begin();
+  last_qbar_meas = micros64();
   qbar_hx711.read();
 
   angles_hx711.begin();
+  last_angle_meas = micros64();
   angles_hx711.read(HX711::CHANNEL_A_64);
-
-  delay(100);
+  last_angle_channel = ALPHA;
 }
 
 
 void loop() {
-  static uint64_t last_angle_meas = 0;
-  static uint64_t last_qbar_meas = 0;
-  static uint64_t last_pstat_meas = 0;
-  enum {
-    ALPHA,
-    BETA
-  } last_angle_measured;
-  
-  uint64_t now = micros64();
+  uint64_t now;
 
   // Dynamic pressure measurement
+  now = micros64();
   if (now - last_qbar_meas >= QBAR_PERIOD_US) {
     int32_t qbar_value = qbar_hx711.read();
-    send_data(last_qbar_meas, CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar_value);
+    send_data(now, CEAFDAS_DATA_SOUCE_QBAR_RAW, qbar_value);
     
     last_qbar_meas = now;
     toggle_led();
-    return;
   }
 
   // Angle of attack pressure measurement
+  now = micros64();
   if (now - last_angle_meas >= ANGLES_PERIOD_US &&
-      last_angle_measured == ALPHA) {
+      last_angle_channel == ALPHA) {
     int32_t angle_value = angles_hx711.read(HX711::CHANNEL_B_32);
-    send_data(last_angle_meas, CEAFDAS_DATA_SOUCE_ALPHA_RAW, angle_value);
-
-    last_angle_measured = BETA;
+    send_data(now, CEAFDAS_DATA_SOUCE_ALPHA_RAW, angle_value);
+    
+    last_angle_channel = BETA;
     last_angle_meas = now;
     toggle_led();
-    return;
   }
 
   // Sideslip pressure measurement
+  now = micros64();
   if (now - last_angle_meas >= ANGLES_PERIOD_US &&
-      last_angle_measured == BETA) {
+      last_angle_channel == BETA) {
     int32_t angle_value = angles_hx711.read(HX711::CHANNEL_A_64);
-    send_data(last_angle_meas, CEAFDAS_DATA_SOUCE_BETA_RAW, angle_value);
-
-    last_angle_measured = ALPHA;
+    send_data(now, CEAFDAS_DATA_SOUCE_BETA_RAW, angle_value);
+    
+    last_angle_channel = ALPHA;
     last_angle_meas = now;
     toggle_led();
-    return;
   }
   
   // Static pressure measurement
+  now = micros64();
   if (now - last_pstat_meas >= PSTAT_PERIOD_US) {
     uint16_t pstat_value = analogRead(PSTAT_PIN);
-    send_data(last_pstat_meas, CEAFDAS_DATA_SOUCE_PRESSURE_RAW, pstat_value);
+    send_data(now, CEAFDAS_DATA_SOUCE_PRESSURE_RAW, pstat_value);
     
-    last_pstat_meas = now;    
+    last_pstat_meas = now;
     toggle_led();
-    return;
   }
 }
