@@ -30,15 +30,6 @@ HX711 qbar_hx711(QBAR_HX711_DATA, QBAR_HX711_CLK, HX711::CHANNEL_A_64);
 constexpr int PSTAT_PIN = A0;
 constexpr int BATT_MON_PIN = A1;
 
-static uint64_t last_angle_meas;
-static uint64_t last_qbar_meas;
-static uint64_t last_pstat_meas = 0;
-static enum {
-  ALPHA,
-  BETA
-} last_angle_channel;
-
-
 /**
  * Microseconds since boot as an uint64_t.
  * Internally uses only 40 bits, so overflows roughly every 12 days.
@@ -87,19 +78,17 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, HIGH);
   
-  Serial.begin(230400);
+  Serial.begin(38400);
   Wire.begin();
 
   
   qbar_hx711.begin();
-  last_qbar_meas = micros64();
   qbar_hx711.read();
 
   angles_hx711.begin();
-  last_angle_meas = micros64();
   angles_hx711.read(HX711::CHANNEL_A_64);
-  last_angle_channel = ALPHA;
 }
+
 
 void read_qbar() {
   // Wait for DOUT to go to high
